@@ -180,6 +180,9 @@ class AttrDict(dict):
 
 _ModelMetaclass__init = False
 
+def _conn_needs_decoding(conn):
+    return not conn.connection_pool.connection_kwargs['decode_responses']
+
 class Model(six.with_metaclass(_ModelMetaclass, object)):
     '''
     This is the base class for all models. You subclass from this base Model
@@ -303,7 +306,7 @@ class Model(six.with_metaclass(_ModelMetaclass, object)):
 
         conn = _connect(self)
         data = conn.hgetall(self._pk)
-        if six.PY3:
+        if six.PY3 and _conn_needs_decoding(conn):
             data = dict((k.decode(), v.decode()) for k, v in data.items())
         self.__init__(_loading=True, **data)
 
@@ -563,7 +566,7 @@ class Model(six.with_metaclass(_ModelMetaclass, object)):
             # Update output list
             for i, data in zip(idxs, pipe.execute()):
                 if data:
-                    if six.PY3:
+                    if six.PY3 and _conn_needs_decoding(conn):
                         data = dict((k.decode(), v.decode()) for k, v in data.items())
                     out[i] = cls(_loading=True, **data)
             # Get rid of missing models
@@ -878,9 +881,6 @@ def redis_writer_lua(conn, pkey, namespace, id, unique, udelete, delete,
     if isinstance(conn, _Pipeline):
         # we're in a pipelined write situation, don't parse the pipeline :P
         return
-
-    if six.PY3:
-        result = result.decode()
 
     result = json.loads(result)
     if 'unique' in result:
